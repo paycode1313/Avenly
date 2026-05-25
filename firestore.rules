@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny - secure by default
+    allow read: if false;
+    allow write: if false;
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Users collection - owner only access
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId)
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.timestamp == request.time;
+      allow update: if isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys()
+                      .hasAny(['uid', 'email', 'userId', 'timestamp', 'createdAt']);
+    }
+
+    // Alerts collection - public read, auth write
+    match /alerts/{alertId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+                     && request.resource.data.reporterId == request.auth.uid
+                     && request.resource.data.timestamp == request.time;
+      allow update, delete: if false; // Immutable
+    }
+
+    // Posts collection - public read, auth write
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.createdAt == request.time;
+      allow update: if request.auth.uid == resource.data.userId
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                      .hasAny(['userId', 'createdAt']);
+      allow delete: if request.auth.uid == resource.data.userId;
+    }
+  }
+}

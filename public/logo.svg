@@ -1,0 +1,15 @@
+<svg width="200" height="280" viewBox="0 0 200 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Logo Icon -->
+  <g transform="translate(30, 20)">
+    <!-- Left Triangle -->
+    <path d="M0 120 L40 60 L40 120 Z" fill="#FF6B00"/>
+    <!-- Right Triangle -->
+    <path d="M100 120 L140 60 L140 120 Z" fill="#FF6B00"/>
+    <!-- Center Pin Shape -->
+    <path d="M70 0 C85 0 95 10 95 25 C95 35 90 45 85 55 L70 90 L55 55 C50 45 45 35 45 25 C45 10 55 0 70 0 Z" fill="#FF6B00"/>
+    <!-- Inner A -->
+    <path d="M70 20 L80 45 L75 45 L70 35 L65 45 L60 45 Z" fill="white"/>
+  </g>
+  <!-- Text -->
+  <text x="100" y="200" font-family="Arial, sans-serif" font-size="60" font-weight="bold" fill="#FF6B00" text-anchor="middle">AvenLy</text>
+</svg>

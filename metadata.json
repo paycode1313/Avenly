@@ -1,0 +1,6 @@
+{
+  "name": "MapVision PWA",
+  "description": "A progressive web app for advanced mobile navigation with AI road scanning, social feed, and real-time traffic updates.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

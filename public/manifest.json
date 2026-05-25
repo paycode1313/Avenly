@@ -1,0 +1,16 @@
+{
+  "name": "Avenly - Road Navigation",
+  "short_name": "Avenly",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FF6B00",
+  "icons": [
+    {
+      "src": "/Logo Avenly - Color.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

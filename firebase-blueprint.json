@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile with favorites and metadata",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "email": { "type": "string" },
+        "favorites": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "RoadAlert": {
+      "title": "Road Alert",
+      "description": "Real-time road hazards and conditions",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["accident", "pothole", "flood", "traffic", "other"] },
+        "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "description": { "type": "string" },
+        "coordinates": { "type": "object" },
+        "reporterId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["type", "coordinates", "reporterId", "timestamp"]
+    },
+    "Post": {
+      "title": "Social Post",
+      "description": "Instagram-like post for travel news",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "locationName": { "type": "string" },
+        "coordinates": { "type": "object" },
+        "likes": { "type": "array", "items": { "type": "string" } },
+        "comments": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "imageUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User data"
+    },
+    "/alerts/{alertId}": {
+      "schema": "RoadAlert",
+      "description": "Global road hazards"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Social feed posts"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+<svg width="140" height="140" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Left Triangle -->
+  <path d="M10 120 L50 60 L50 120 Z" fill="#FF6B00"/>
+  <!-- Right Triangle -->
+  <path d="M90 120 L130 60 L130 120 Z" fill="#FF6B00"/>
+  <!-- Center Pin Shape -->
+  <path d="M70 10 C85 10 95 20 95 35 C95 45 90 55 85 65 L70 100 L55 65 C50 55 45 45 45 35 C45 20 55 10 70 10 Z" fill="#FF6B00"/>
+  <!-- Inner A -->
+  <path d="M70 30 L80 55 L75 55 L70 45 L65 55 L60 55 Z" fill="white"/>
+</svg>
