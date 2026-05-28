@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Haversine distance in km between two [lng, lat] points
+const HAZARD_HOTSPOTS = [
+  { center: [107.3380, -6.3100] as [number, number], severity: 'medium' as const, name: 'Alun-Alun Karawang (ramai)' },
+  { center: [107.3360, -6.3080] as [number, number], severity: 'low' as const, name: 'Pasar Karyagem (padat)' },
+  { center: [107.3350, -6.2950] as [number, number], severity: 'low' as const, name: 'RSUD Karawang (akses ramai)' },
+  { center: [107.3450, -6.2950] as [number, number], severity: 'low' as const, name: 'Tugu VW (simpang sibuk)' },
+];
+
 function haversineKm(a: [number, number], b: [number, number]): number {
   const R = 6371;
   const dLat = (b[1] - a[1]) * Math.PI / 180;
@@ -11,25 +17,16 @@ function haversineKm(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-// Score a route based on proximity to hazard hotspots
-function scoreRouteSafety(
-  steps: any[],
-  hazards: { center: [number, number]; severity: string; name: string }[]
-): { safetyScore: number; hazardWarnings: { name: string; severity: string; distanceKm: number }[] } {
+function scoreRouteSafety(steps: any[]): { safetyScore: number; hazardWarnings: { name: string; severity: string; distanceKm: number }[] } {
   const WARNING_RADIUS_KM = 3;
   const warnings: { name: string; severity: string; distanceKm: number }[] = [];
 
   for (const step of steps) {
-    if (!step) continue;
-    const stepLoc: [number, number] | null =
-      (step as any).location ??
-      (step as any).maneuver?.location ??
-      (step as any).intersections?.[0]?.location ??
-      null;
-    if (!stepLoc) continue;
-
-    for (const hazard of hazards) {
-      const dist = haversineKm(stepLoc, hazard.center);
+    const loc: [number, number] | null =
+      step?.maneuver?.location ?? step?.intersections?.[0]?.location ?? null;
+    if (!loc) continue;
+    for (const hazard of HAZARD_HOTSPOTS) {
+      const dist = haversineKm(loc, hazard.center);
       if (dist <= WARNING_RADIUS_KM) {
         warnings.push({ name: hazard.name, severity: hazard.severity, distanceKm: dist });
       }
@@ -51,78 +48,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+  const { origin, destination } = req.body;
+
+  if (!origin || !destination) {
+    return res.status(400).json({ error: 'Origin and destination required' });
   }
+
+  // Server-side: use MAPBOX_ACCESS_TOKEN (VITE_ prefix is for client-side only)
+  const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN || process.env.VITE_MAPBOX_ACCESS_TOKEN;
+  if (!mapboxToken) {
+    return res.status(500).json({ error: 'Mapbox token tidak dikonfigurasi di server' });
+  }
+
+  const originStr = `${origin[0]},${origin[1]}`;
+  const destStr = `${destination[0]},${destination[1]}`;
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${originStr};${destStr}?geometries=geojson&overview=full&steps=true&language=id&alternatives=true&access_token=${mapboxToken}`;
+
+  console.log(`🚗 Directions: ${originStr} → ${destStr}`);
 
   try {
-    const { origin, destination, avoidHazards } = req.body;
-
-    if (!origin || !destination) {
-      res.status(400).json({ error: 'Origin and destination required' });
-      return;
-    }
-
-    const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN || process.env.VITE_MAPBOX_ACCESS_TOKEN;
-    if (!mapboxToken) {
-      res.status(500).json({ error: 'Mapbox token not configured' });
-      return;
-    }
-
-    // Hazard hotspots for safety scoring (in production, from Firestore alerts)
-    const hazardHotspots = [
-      { center: [107.3380, -6.3100] as [number, number], severity: 'medium' as const, name: 'Alun-Alun Karawang (ramai)' },
-      { center: [107.3360, -6.3080] as [number, number], severity: 'low' as const, name: 'Pasar Karyagem (padat)' },
-      { center: [107.3350, -6.2950] as [number, number], severity: 'low' as const, name: 'RSUD Karawang (akses ramai)' },
-      { center: [107.3450, -6.2950] as [number, number], severity: 'low' as const, name: 'Tugu VW (simpang sibuk)' },
-    ];
-
-    const originStr = `${origin[0]},${origin[1]}`;
-    const destStr = `${destination[0]},${destination[1]}`;
-
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${originStr};${destStr}?geometries=geojson&overview=full&steps=true&language=id&alternatives=true&access_token=${mapboxToken}`;
-
-    console.log(`Mapbox Directions: ${originStr} -> ${destStr}`);
     const response = await fetch(url);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Mapbox Directions error: ${response.status} ${errorText}`);
+    if (response.status === 402) {
+      console.error('❌ Mapbox 402 — Directions API not available on this token');
+      return res.status(402).json({
+        error: 'Directions API tidak tersedia. Token Mapbox Anda tidak memiliki akses Directions API. Silakan upgrade ke paket yang mencakup Directions API.',
+        code: 'DIRECTIONS_UNAVAILABLE',
+      });
     }
 
     const data = await response.json();
 
     if (data.message) {
-      console.error('Mapbox Directions error:', data.message);
-      res.status(500).json({ error: data.message });
-      return;
+      return res.status(500).json({ error: data.message });
     }
 
     if (!data.routes || data.routes.length === 0) {
-      res.status(500).json({ error: 'No routes found' });
-      return;
+      return res.status(500).json({ error: 'No routes found' });
     }
 
-    // Score each route for safety
     const scoredRoutes = data.routes.map((route: any) => {
       const steps = route.legs?.[0]?.steps || [];
-      const { safetyScore, hazardWarnings } = scoreRouteSafety(steps, hazardHotspots);
+      const { safetyScore, hazardWarnings } = scoreRouteSafety(steps);
       return { ...route, safetyScore, hazardWarnings };
     });
 
-    let selectedRoute: any;
-    if (avoidHazards) {
-      selectedRoute = scoredRoutes.reduce((best: any, r: any) =>
-        r.safetyScore > (best?.safetyScore ?? 0) ? r : best, scoredRoutes[0]);
-    } else {
-      selectedRoute = scoredRoutes.reduce((best: any, r: any) =>
-        r.duration < (best?.duration ?? Infinity) ? r : best, scoredRoutes[0]);
-    }
+    // Pick fastest route (or safest if preferHazards)
+    const selected = scoredRoutes.reduce(
+      (best: any, r: any) => (r.duration < best.duration ? r : best),
+      scoredRoutes[0]
+    );
 
     const allRoutes = scoredRoutes.map((r: any) => ({
       geometry: r.geometry,
@@ -131,31 +109,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       distance_km: (r.distance / 1000).toFixed(1),
       eta_text: (() => {
         const mins = Math.round(r.duration / 60);
-        return mins >= 60 ? `${Math.floor(mins / 60)} jam ${mins % 60} menit` : `${mins} menit`;
+        return mins >= 60 ? `${Math.floor(mins / 60)}j ${mins % 60}m` : `${mins} menit`;
       })(),
       legs: r.legs,
       safetyScore: r.safetyScore,
       hazardWarnings: r.hazardWarnings,
     }));
 
-    const bestRoute = allRoutes[0];
+    const best = allRoutes[0];
+    console.log(`✅ Route: ${best.distance_km}km, safety=${best.safetyScore}, ${best.hazardWarnings.length} warnings`);
 
-    console.log(`Route found: ${bestRoute.distance_km}km, safety=${bestRoute.safetyScore}/100, ${bestRoute.hazardWarnings.length} warnings`);
-
-    res.status(200).json({
+    return res.json({
       routes: allRoutes,
       selectedRouteIndex: 0,
       safetySummary: {
-        score: bestRoute.safetyScore,
-        label: bestRoute.safetyScore >= 80 ? 'Sangat Aman'
-          : bestRoute.safetyScore >= 60 ? 'Cukup Aman'
-          : bestRoute.safetyScore >= 40 ? 'Hati-Hati'
-          : 'Rute Berisiko',
-        warnings: bestRoute.hazardWarnings.slice(0, 3),
-      }
+        score: best.safetyScore,
+        label: best.safetyScore >= 80 ? 'Sangat Aman' : best.safetyScore >= 60 ? 'Cukup Aman' : best.safetyScore >= 40 ? 'Hati-Hati' : 'Rute Berisiko',
+        warnings: best.hazardWarnings.slice(0, 3),
+      },
     });
-  } catch (error: any) {
-    console.error('Directions error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+  } catch (err: any) {
+    console.error('❌ Directions error:', err);
+    return res.status(500).json({ error: err.message });
   }
 }

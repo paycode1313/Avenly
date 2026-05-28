@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Camera, Navigation, MapPin, Search, X, ArrowRight, ChevronRight, RotateCcw } from 'lucide-react';
+import { Camera, Navigation, MapPin, Search, X, ArrowRight, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
+// @ts-ignore - Mapbox GL JS types
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
 interface GeocodingFeature {
@@ -37,32 +38,20 @@ interface RouteState {
   safetyScore: number;
   safetyLabel: string;
   hazardWarnings: { name: string; severity: string; distanceKm: number }[];
-  maneuverCoords: [number, number][]; // coordinates for each maneuver for proximity detection
+  maneuverCoords: [number, number][];
 }
 
 const MANEUVER_ICONS: Record<string, string> = {
-  depart: '🚀',
-  turn: '↩️',
-  merge: '↗️',
-  'on ramp': '🛣️',
-  'off ramp': '↘️',
-  fork: '↗️',
-  'end of road': '↩️',
-  continue: '➡️',
-  'new name': '➡️',
-  destination: '🏁',
-  'destination reached': '✅',
-  'rotary': '🔄',
-  'roundabout': '🔄',
+  depart: '🚀', turn: '↩️', merge: '↗️', 'on ramp': '🛣️',
+  'off ramp': '↘️', fork: '↗️', 'end of road': '↩️',
+  continue: '➡️', 'new name': '➡️', destination: '🏁',
+  'destination reached': '✅', 'rotary': '🔄', 'roundabout': '🔄',
 };
 
 const DIRECTION_SUFFIX: Record<string, string> = {
-  right: ' ke kanan',
-  left: ' ke kiri',
-  'slight right': ' sedikit ke kanan',
-  'slight left': ' sedikit ke kiri',
-  sharp: ' tajam',
-  straight: ' terus',
+  right: ' ke kanan', left: ' ke kiri',
+  'slight right': ' sedikit ke kanan', 'slight left': ' sedikit ke kiri',
+  sharp: ' tajam', straight: ' terus',
 };
 
 function formatDistance(meters: number): string {
@@ -80,10 +69,7 @@ function formatDuration(seconds: number): string {
 
 function translateManeuver(instruction: string, modifier?: string): string {
   const lower = instruction.toLowerCase();
-  let suffix = '';
-  if (modifier) {
-    suffix = DIRECTION_SUFFIX[modifier.toLowerCase()] || '';
-  }
+  let suffix = modifier ? (DIRECTION_SUFFIX[modifier.toLowerCase()] || '') : '';
   if (lower.includes('depart')) return 'Mulai perjalanan';
   if (lower.includes('destination reached')) return 'Anda telah tiba';
   if (lower.includes('continue')) return 'Terus' + suffix;
@@ -105,7 +91,7 @@ export default function NavigateView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
-  const routeLayerAddedRef = useRef(false);
+  const currentLocationRef = useRef<[number, number]>([107.3371, -6.3065]);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [hazards, setHazards] = useState<any[]>([]);
@@ -114,87 +100,52 @@ export default function NavigateView() {
   const [suggestions, setSuggestions] = useState<GeocodingFeature[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
-
-  // Ref to prevent debounce re-trigger when setSearchQuery is called inside calculateRoute
   const isCalculatingRouteRef = useRef(false);
 
   const [routeState, setRouteState] = useState<RouteState>({
-    isNavigating: false,
-    origin: null,
-    destination: null,
-    routeGeometry: null,
-    maneuvers: [],
-    currentStepIndex: 0,
-    eta: 0,
-    distance: 0,
-    steps: 0,
-    safetyScore: 100,
-    safetyLabel: 'Sangat Aman',
-    hazardWarnings: [],
-    maneuverCoords: [],
+    isNavigating: false, origin: null, destination: null, routeGeometry: null,
+    maneuvers: [], currentStepIndex: 0, eta: 0, distance: 0, steps: 0,
+    safetyScore: 100, safetyLabel: 'Sangat Aman', hazardWarnings: [], maneuverCoords: [],
   });
 
-  const [currentLocation, setCurrentLocation] = useState<[number, number]>([107.3371, -6.3065]); // Karawang
-  const currentLocationRef = useRef(currentLocation);
-  useEffect(() => { currentLocationRef.current = currentLocation; }, [currentLocation]);
-  const userLocationMarker = useRef<mapboxgl.Marker | null>(null);
-  const [tokenError, setTokenError] = useState('');
-  const [currentTime, setCurrentTime] = useState('');
-
-  // Geolocation status: 'loading' | 'success' | 'error' | null
+  const [currentLocation, setCurrentLocation] = useState<[number, number]>([107.3371, -6.3065]);
   const [locationStatus, setLocationStatus] = useState<'loading' | 'success' | 'error' | null>(null);
   const [locationErrorMsg, setLocationErrorMsg] = useState('');
+  const [tokenError, setTokenError] = useState('');
+  const [currentTime, setCurrentTime] = useState('');
+  const [activeTab, setActiveTab] = useState<'map' | 'search' | 'camera'>('map');
+  const userLocationMarker = useRef<mapboxgl.Marker | null>(null);
 
-  // Token validation
+  useEffect(() => { currentLocationRef.current = currentLocation; }, [currentLocation]);
+
   useEffect(() => {
     if (!MAPBOX_TOKEN || MAPBOX_TOKEN.includes('your_mapbox_token')) {
-      setTokenError('Mapbox token tidak ditemukan. Set VITE_MAPBOX_ACCESS_TOKEN di .env');
-      return;
+      setTokenError('Mapbox token tidak ditemukan. Set VITE_MAPBOX_ACCESS_TOKEN di .env'); return;
     }
-    if (!MAPBOX_TOKEN.startsWith('pk.')) {
-      setTokenError('Token Mapbox harus dimulai dengan "pk."');
-      return;
-    }
+    if (!MAPBOX_TOKEN.startsWith('pk.')) { setTokenError('Token Mapbox harus dimulai dengan "pk."'); return; }
   }, []);
 
-  // Clock
   useEffect(() => {
-    const updateClock = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-    };
+    const updateClock = () => setCurrentTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
     updateClock();
     const interval = setInterval(updateClock, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Camera
   useEffect(() => {
-    if (isCameraActive) {
-      startCamera();
-    } else {
-      stopCamera();
-    }
+    if (isCameraActive) startCamera(); else stopCamera();
   }, [isCameraActive]);
 
   async function startCamera() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: false
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err) {
-      console.error("Camera access failed", err);
-    }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch (err) { console.error("Camera access failed", err); }
   }
 
   function stopCamera() {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
     }
   }
 
@@ -211,157 +162,92 @@ export default function NavigateView() {
         const response = await fetch('/api/analyze-road', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image: base64Image,
-            location: { lat: currentLocation[1], lng: currentLocation[0] }
-          })
+          body: JSON.stringify({ image: base64Image, location: { lat: currentLocation[1], lng: currentLocation[0] } }),
         });
         if (response.ok) {
           const result = await response.json();
           if (result.hazardDetected) {
             const newHazard = {
-              id: Date.now(),
-              type: result.type || "Bahaya Jalan",
-              distance: "dekat",
-              severityColor: result.severity === 'high' ? "text-red-500" : "text-brand-orange"
+              id: Date.now(), type: result.type || "Bahaya Jalan", distance: "dekat",
+              severityColor: result.severity === 'high' ? "text-red-500" : "text-brand-orange",
             };
             setHazards(prev => [newHazard, ...prev].slice(0, 3));
-            const speech = new SpeechSynthesisUtterance(`Waspada di depan: ${result.description || result.type}`);
-            window.speechSynthesis.speak(speech);
+            window.speechSynthesis?.speak(new SpeechSynthesisUtterance(`Waspada di depan: ${result.description || result.type}`));
           }
         }
       }
-    } catch (err) {
-      console.warn("AI scanning error", err);
-    }
+    } catch (err) { console.warn("AI scanning error", err); }
   }
 
-  // AI scan interval
   useEffect(() => {
     if (!isCameraActive) return;
     const interval = setInterval(scanRoad, 5000);
     return () => clearInterval(interval);
   }, [isCameraActive, currentLocation]);
 
-  // Geolocation — get user's real location
   const fetchLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      console.error('❌ Geolocation not supported');
-      setLocationStatus('error');
-      setLocationErrorMsg('Geolocation tidak didukung browser ini');
-      return;
-    }
-    console.log('🔍 Requesting location...');
+    if (!navigator.geolocation) { setLocationStatus('error'); setLocationErrorMsg('Geolocation tidak didukung browser ini'); return; }
     setLocationStatus('loading');
-    setLocationErrorMsg('');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        console.log('✅ Location found:', pos.coords);
-        const lng = pos.coords.longitude;
-        const lat = pos.coords.latitude;
-
-        // Check if location is reasonable (within Indonesia bounds)
+        const lng = pos.coords.longitude, lat = pos.coords.latitude;
         const isInIndonesia = lng >= 95 && lng <= 141 && lat >= -11 && lat <= 6;
-
-        if (!isInIndonesia) {
-          console.warn('⚠️ Location outside Indonesia, using Karawang fallback');
-          setCurrentLocation([107.3371, -6.3065]); // Karawang
-          setLocationStatus('error');
-          setLocationErrorMsg('Lokasi terdeteksi di luar Indonesia. Menggunakan Karawang sebagai default.');
-        } else {
-          setCurrentLocation([lng, lat]);
-          setLocationStatus('success');
-          setLocationErrorMsg('');
-        }
-
-        if (mapInstanceRef.current) {
-          const finalLocation = isInIndonesia ? [lng, lat] : [107.3371, -6.3065];
-          mapInstanceRef.current.flyTo({ center: finalLocation as [number, number], zoom: 14 });
-        }
+        const finalLocation: [number, number] = isInIndonesia ? [lng, lat] : [107.3371, -6.3065];
+        setCurrentLocation(finalLocation);
+        setLocationStatus(isInIndonesia ? 'success' : 'error');
+        setLocationErrorMsg(isInIndonesia ? '' : 'Lokasi terdeteksi di luar Indonesia. Menggunakan Karawang sebagai default.');
+        if (mapInstanceRef.current) mapInstanceRef.current.flyTo({ center: finalLocation, zoom: 14 });
       },
       (err) => {
-        console.error('❌ Geolocation error:', {
-          code: err.code,
-          message: err.message
-        });
         setLocationStatus('error');
-        const msg = err.code === 1
-          ? 'Izin lokasi ditolak. Aktifkan lokasi di pengaturan browser.'
-          : err.code === 2
-          ? 'Lokasi tidak tersedia. Pastikan GPS aktif.'
-          : err.code === 3
-          ? 'Timeout mencari lokasi. Coba lagi.'
-          : 'Gagal mendapatkan lokasi. Coba lagi.';
-        setLocationErrorMsg(msg);
-        // Fallback to Karawang
+        setLocationErrorMsg(
+          err.code === 1 ? 'Izin lokasi ditolak. Aktifkan lokasi di pengaturan browser.' :
+          err.code === 2 ? 'Lokasi tidak tersedia. Pastikan GPS aktif.' :
+          err.code === 3 ? 'Timeout mencari lokasi. Coba lagi.' : 'Gagal mendapatkan lokasi.'
+        );
         setCurrentLocation([107.3371, -6.3065]);
       },
       { timeout: 15000, enableHighAccuracy: false, maximumAge: 300000 }
     );
   }, []);
 
-  useEffect(() => {
-    fetchLocation();
-  }, [fetchLocation]);
+  useEffect(() => { fetchLocation(); }, [fetchLocation]);
 
-  // Init map when token is valid
   useEffect(() => {
     if (tokenError || mapInstanceRef.current || !mapContainerRef.current) return;
-
     mapboxgl.accessToken = MAPBOX_TOKEN!;
-
     const map = new mapboxgl.Map({
       container: mapContainerRef.current!,
-      style: 'mapbox://styles/mapbox/navigation-night-v1',
-      center: currentLocation,
-      zoom: 14,
-      attributionControl: false,
+      style: 'mapbox://styles/mapbox/dark-v11',
+      center: currentLocation, zoom: 14, attributionControl: false,
     });
 
     map.on('load', () => {
-      // Add a pulsing dot for user location (color changes based on status)
       const el = document.createElement('div');
       el.className = 'user-location-pulse';
       el.style.cssText = `
-        width: 20px; height: 20px; background: #94a3b8;
-        border-radius: 50%; border: 3px solid white;
-        box-shadow: 0 0 0 0 rgba(148,163,184,0.4);
-        animation: pulse 2s infinite;
-        transition: background 0.3s ease;
+        width:20px;height:20px;background:#94a3b8;border-radius:50%;border:3px solid white;
+        box-shadow:0 0 0 0 rgba(148,163,184,0.4);animation:pulse 2s infinite;transition:background 0.3s ease;
       `;
       const style = document.createElement('style');
-      style.textContent = `@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); } 70% { box-shadow: 0 0 0 12px rgba(59,130,246,0); } 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); } }`;
+      style.textContent = `@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,0.4);}70%{box-shadow:0 0 0 12px rgba(59,130,246,0);}100%{box-shadow:0 0 0 0 rgba(59,130,246,0);}}`;
       document.head.appendChild(style);
+      userLocationMarker.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(currentLocation).addTo(map);
 
-      userLocationMarker.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat(currentLocation)
-        .addTo(map);
-
-      // Track user location — use functional setRouteState to avoid stale closure
       navigator.geolocation?.watchPosition((pos) => {
-        const lng = pos.coords.longitude;
-        const lat = pos.coords.latitude;
+        const [lng, lat] = [pos.coords.longitude, pos.coords.latitude];
         setCurrentLocation([lng, lat]);
         userLocationMarker.current?.setLngLat([lng, lat]);
-
-        // Proximity-based turn-by-turn (functional update avoids stale routeState)
         setRouteState(prev => {
           if (!prev.isNavigating || prev.maneuverCoords.length === 0) return prev;
           const nextIdx = prev.currentStepIndex + 1;
           if (nextIdx >= prev.maneuverCoords.length) return prev;
-          const nextCoord = prev.maneuverCoords[nextIdx];
-          const ARRIVAL_THRESHOLD = 50; // meters
-          const dist = haversineM([lng, lat], nextCoord);
-          if (dist <= ARRIVAL_THRESHOLD) {
-            console.log(`✅ Step ${nextIdx}: ${prev.maneuvers[nextIdx]?.instruction}`);
+          const dist = haversineM([lng, lat], prev.maneuverCoords[nextIdx]);
+          if (dist <= 50) {
             const afterNext = prev.maneuvers[nextIdx + 1];
             if (afterNext) {
-              const utterance = new SpeechSynthesisUtterance(
-                translateManeuver(afterNext.instruction, afterNext.modifier)
-              );
-              utterance.lang = 'id-ID';
-              utterance.rate = 1.1;
-              window.speechSynthesis?.speak(utterance);
+              const u = new SpeechSynthesisUtterance(translateManeuver(afterNext.instruction, afterNext.modifier));
+              u.lang = 'id-ID'; u.rate = 1.1; window.speechSynthesis?.speak(u);
             }
             return { ...prev, currentStepIndex: nextIdx };
           }
@@ -369,344 +255,120 @@ export default function NavigateView() {
         });
       });
     });
-
     mapInstanceRef.current = map;
-
-    return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-    };
+    return () => { map.remove(); mapInstanceRef.current = null; };
   }, [tokenError]);
 
-  // Update marker color based on location status
   useEffect(() => {
     const markerEl = userLocationMarker.current?.getElement();
     if (!markerEl) return;
-
-    if (locationStatus === 'loading') {
-      markerEl.style.background = '#94a3b8'; // gray
-      markerEl.style.animation = 'pulse 1s infinite';
-    } else if (locationStatus === 'success') {
-      markerEl.style.background = '#3b82f6'; // blue
-      markerEl.style.animation = 'pulse 2s infinite';
-      userLocationMarker.current?.setLngLat(currentLocation);
-    } else if (locationStatus === 'error') {
-      markerEl.style.background = '#ef4444'; // red
-      markerEl.style.animation = 'none';
-    }
+    if (locationStatus === 'loading') { markerEl.style.background = '#94a3b8'; markerEl.style.animation = 'pulse 1s infinite'; }
+    else if (locationStatus === 'success') { markerEl.style.background = '#3b82f6'; markerEl.style.animation = 'pulse 2s infinite'; userLocationMarker.current?.setLngLat(currentLocation); }
+    else if (locationStatus === 'error') { markerEl.style.background = '#ef4444'; markerEl.style.animation = 'none'; }
   }, [locationStatus, currentLocation]);
 
-  // Show route on map when routeGeometry changes
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !routeState.routeGeometry) return;
-
-    const sourceId = 'route-source';
-    const layerId = 'route-layer';
-
-    // Remove old layer if exists
+    const sourceId = 'route-source', layerId = 'route-layer';
     if (map.getLayer(layerId)) map.removeLayer(layerId);
     if (map.getSource(sourceId)) map.removeSource(sourceId);
-
-    map.addSource(sourceId, {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        geometry: routeState.routeGeometry,
-        properties: {},
-      },
-    });
-
-    map.addLayer({
-      id: layerId,
-      type: 'line',
-      source: sourceId,
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': '#f97316',
-        'line-width': 5,
-        'line-opacity': 0.8,
-      },
-    });
-
-    // Fit map to route bounds
+    map.addSource(sourceId, { type: 'geojson', data: { type: 'Feature', geometry: routeState.routeGeometry, properties: {} } });
+    map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#f97316', 'line-width': 5, 'line-opacity': 0.8 } });
     const coords = routeState.routeGeometry.coordinates;
     if (coords.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
-      for (const c of coords) {
-        bounds.extend([c[0], c[1]] as [number, number]);
-      }
+      coords.forEach(c => bounds.extend([c[0], c[1]] as [number, number]));
       map.fitBounds(bounds, { padding: 80, duration: 1000 });
     }
-
-    routeLayerAddedRef.current = true;
-
-    return () => {
-      if (map.getLayer(layerId)) map.removeLayer(layerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
-      routeLayerAddedRef.current = false;
-    };
+    return () => { if (map.getLayer(layerId)) map.removeLayer(layerId); if (map.getSource(sourceId)) map.removeSource(sourceId); };
   }, [routeState.routeGeometry]);
 
-  // Search for places
-  // NOTE: we use currentLocationRef (not currentLocation) to avoid rebuilding the function
-  // on every GPS update — which would reset the debounce timer and prevent searches from completing
   const searchPlaces = useCallback(async (query: string) => {
     if (!query.trim()) { setSuggestions([]); return; }
-    setSearchLoading(true);
-    setSearchError('');
+    setSearchLoading(true); setSearchError('');
     try {
-      const locationAtCall = currentLocationRef.current;
-      const proximity = `${locationAtCall[0]},${locationAtCall[1]}`;
-      const url = `/api/geocode?query=${encodeURIComponent(query)}&proximity=${proximity}`;
-      console.log('Geocoding request:', url);
-      const res = await fetch(url);
+      const proximity = `${currentLocationRef.current[0]},${currentLocationRef.current[1]}`;
+      const res = await fetch(`/api/geocode?query=${encodeURIComponent(query)}&proximity=${proximity}`);
       const data = await res.json();
-
-      console.log('Geocoding response:', data);
-
-      if (data.error && !data.features) {
-        setSearchError(data.error);
-        setSuggestions([]);
-        return;
-      }
-
-      if (data.features && data.features.length > 0) {
-        console.log(`✅ Found ${data.features.length} results`);
-        setSuggestions(data.features as GeocodingFeature[]);
-      } else {
-        setSuggestions([]);
-        setSearchError('Tidak ada hasil ditemukan. Coba kata kunci lain.');
-      }
-    } catch (err) {
-      console.error('Geocoding error:', err);
-      setSearchError('Gagal mencari lokasi. Cek koneksi internet.');
-      setSuggestions([]);
-    } finally {
-      setSearchLoading(false);
-    }
+      if (data.error && !data.features) { setSearchError(data.error); setSuggestions([]); return; }
+      if (data.features?.length > 0) { setSuggestions(data.features as GeocodingFeature[]); }
+      else { setSuggestions([]); setSearchError('Tidak ada hasil ditemukan. Coba kata kunci lain.'); }
+    } catch { setSearchError('Gagal mencari lokasi. Cek koneksi internet.'); setSuggestions([]); }
+    finally { setSearchLoading(false); }
   }, []);
 
   useEffect(() => {
-    // Skip re-search if setSearchQuery was just called inside calculateRoute
-    if (isCalculatingRouteRef.current) {
-      isCalculatingRouteRef.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (searchQuery.trim()) searchPlaces(searchQuery);
-    }, 300);
+    if (isCalculatingRouteRef.current) { isCalculatingRouteRef.current = false; return; }
+    const timer = setTimeout(() => { if (searchQuery.trim()) searchPlaces(searchQuery); }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery, searchPlaces]);
 
-  // Calculate route
   async function calculateRoute(dest: GeocodingFeature) {
-    // Set flag to prevent debounce from re-searching when we update searchQuery
     isCalculatingRouteRef.current = true;
-    setSearchQuery(dest.place_name);
-    setSearchError('');
-
+    setSearchQuery(dest.place_name); setSearchError('');
     const origin: [number, number] = currentLocation;
     const destination: [number, number] = dest.center;
-
-    console.log('Calculate route:', { origin, destination });
-
-    // Check if origin and destination are too far apart (> 100km)
-    const distance = Math.sqrt(
-      Math.pow((destination[0] - origin[0]) * 111, 2) +
-      Math.pow((destination[1] - origin[1]) * 111, 2)
-    );
-
-    if (distance > 100) {
-      setSearchError(`Jarak terlalu jauh (${distance.toFixed(0)}km). Mapbox free tier maksimal 100km. Silakan pilih lokasi yang lebih dekat.`);
-      console.warn('Distance too far:', distance, 'km');
-      return;
-    }
+    const distance = Math.sqrt(Math.pow((destination[0] - origin[0]) * 111, 2) + Math.pow((destination[1] - origin[1]) * 111, 2));
+    if (distance > 100) { setSearchError(`Jarak terlalu jauh (${distance.toFixed(0)}km). Mapbox free tier maksimal 100km.`); return; }
 
     try {
       const res = await fetch('/api/directions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ origin, destination }),
       });
-
-      console.log('Directions response status:', res.status);
-
       if (!res.ok) {
-        const errorData = await res.json();
-        console.error('Directions error:', errorData);
-
-        if (errorData.error?.includes('maximum distance')) {
-          setSearchError('Jarak terlalu jauh untuk rute gratis. Pilih lokasi dalam radius 100km.');
-        } else {
-          setSearchError(errorData.error || 'Gagal menghitung rute');
-        }
+        const err = await res.json();
+        setSearchError(err.error?.includes('maximum distance') ? 'Jarak terlalu jauh untuk rute gratis. Pilih lokasi dalam radius 100km.' : (err.error || 'Gagal menghitung rute'));
         return;
       }
-
       const data = await res.json();
-      console.log('Directions data:', data);
-
-      if (data.routes && data.routes.length > 0) {
+      if (data.routes?.length > 0) {
         const route = data.routes[0];
         const steps = data.routes[0].legs?.[0]?.steps || [];
-
-        // Extract maneuver coordinates for proximity-based turn-by-turn
         const maneuverCoords: [number, number][] = steps.map((step: any) => {
           const loc = step.maneuver?.location ?? step.location ?? step.intersections?.[0]?.location ?? null;
           return (loc ? [loc[0], loc[1]] : currentLocation) as [number, number];
         });
-
-        // Get safety data from server
-        const safetyScore = data.routes[0].safetyScore ?? 100;
-        const safetyLabel = data.safetySummary?.label ?? 'Sangat Aman';
-        const hazardWarnings = data.routes[0].hazardWarnings ?? [];
-
-        console.log('Route found:', {
-          duration: route.duration,
-          distance: route.distance,
-          steps: steps.length,
-          safetyScore,
-          hazardWarnings: hazardWarnings.length
+        setRouteState({
+          isNavigating: false, origin, destination: dest, routeGeometry: route.geometry,
+          maneuvers: steps, currentStepIndex: 0,
+          eta: Math.round(route.duration / 60), distance: Math.round(route.distance), steps: steps.length,
+          safetyScore: route.safetyScore ?? 100, safetyLabel: data.safetySummary?.label ?? 'Sangat Aman',
+          hazardWarnings: route.hazardWarnings ?? [], maneuverCoords,
         });
-
-        setRouteState(prev => ({
-          ...prev,
-          isNavigating: false,
-          origin,
-          destination: dest,
-          routeGeometry: route.geometry,
-          maneuvers: steps,
-          currentStepIndex: 0,
-          eta: Math.round(route.duration / 60),
-          distance: Math.round(route.distance),
-          steps: steps.length,
-          safetyScore,
-          safetyLabel,
-          hazardWarnings,
-          maneuverCoords,
-        }));
-      } else {
-        console.error('No routes found in response');
-        setSearchError('Rute tidak ditemukan');
-      }
-    } catch (error: any) {
-      console.error('Calculate route error:', error);
-      setSearchError(error.message || 'Gagal menghitung rute');
-    }
+      } else { setSearchError('Rute tidak ditemukan'); }
+    } catch (err: any) { setSearchError(err.message || 'Gagal menghitung rute'); }
   }
 
-  // Haversine distance in meters between two [lng, lat] points
   function haversineM(a: [number, number], b: [number, number]): number {
-    const R = 6371000;
-    const dLat = (b[1] - a[1]) * Math.PI / 180;
-    const dLon = (b[0] - a[0]) * Math.PI / 180;
-    const lat1 = a[1] * Math.PI / 180;
-    const lat2 = b[1] * Math.PI / 180;
+    const R = 6371000, dLat = (b[1] - a[1]) * Math.PI / 180, dLon = (b[0] - a[0]) * Math.PI / 180;
+    const lat1 = a[1] * Math.PI / 180, lat2 = b[1] * Math.PI / 180;
     const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
   }
 
-  // Proximity-based turn-by-turn: advance when user is within ARRIVAL_THRESHOLD meters of maneuver point
-  function advanceToNextStep(userPos: [number, number]) {
-    setRouteState(prev => {
-      if (!prev.isNavigating || prev.maneuvers.length === 0) return prev;
-
-      const nextIdx = prev.currentStepIndex + 1;
-      if (nextIdx >= prev.maneuvers.length) return prev;
-
-      const nextCoord = prev.maneuverCoords[nextIdx];
-      if (!nextCoord) return prev;
-
-      const dist = haversineM(userPos, nextCoord);
-      const ARRIVAL_THRESHOLD = 50; // meters
-
-      if (dist <= ARRIVAL_THRESHOLD) {
-        const nextManeuver = prev.maneuvers[nextIdx];
-        console.log(`✅ Arrived at step ${nextIdx}: ${nextManeuver.instruction} (was ${dist.toFixed(0)}m away)`);
-
-        // Announce next turn if there is one
-        const afterNext = prev.maneuvers[nextIdx + 1];
-        if (afterNext) {
-          const utterance = new SpeechSynthesisUtterance(
-            translateManeuver(afterNext.instruction, afterNext.modifier)
-          );
-          utterance.lang = 'id-ID';
-          utterance.rate = 1.1;
-          window.speechSynthesis?.speak(utterance);
-        }
-
-        return { ...prev, currentStepIndex: nextIdx };
-      }
-
-      return prev;
-    });
-  }
-
-  // Auto-advance steps every 30s during active navigation
-  useEffect(() => {
-    if (!routeState.isNavigating) return;
-    // Removed timer-based auto-advance — now using proximity-based detection via watchPosition
-  }, [routeState.isNavigating]);
-
-  function startNavigation() {
-    setRouteState(prev => ({ ...prev, isNavigating: true }));
-    setIsCameraActive(true);
-  }
-
+  function startNavigation() { setRouteState(prev => ({ ...prev, isNavigating: true })); setIsCameraActive(true); }
   function cancelNavigation() {
-    setRouteState(prev => ({
-      ...prev,
-      isNavigating: false,
-      currentStepIndex: 0,
-    }));
-    setIsCameraActive(false);
-    setHazards([]);
-    window.speechSynthesis?.cancel();
+    setRouteState(prev => ({ ...prev, isNavigating: false, currentStepIndex: 0 }));
+    setIsCameraActive(false); setHazards([]); window.speechSynthesis?.cancel();
   }
-
   function resetRoute() {
     cancelNavigation();
-    setRouteState(prev => ({
-      ...prev,
-      origin: null,
-      destination: null,
-      routeGeometry: null,
-      maneuvers: [],
-      eta: 0,
-      distance: 0,
-      safetyScore: 100,
-      safetyLabel: 'Sangat Aman',
-      hazardWarnings: [],
-      maneuverCoords: [],
-    }));
-    setSearchQuery('');
-    setSuggestions([]);
+    setRouteState({ isNavigating: false, origin: null, destination: null, routeGeometry: null, maneuvers: [], currentStepIndex: 0, eta: 0, distance: 0, steps: 0, safetyScore: 100, safetyLabel: 'Sangat Aman', hazardWarnings: [], maneuverCoords: [] });
+    setSearchQuery(''); setSuggestions([]);
   }
 
   const currentManeuver = routeState.maneuvers[routeState.currentStepIndex];
-  const nextManeuver = routeState.maneuvers[routeState.currentStepIndex + 1];
-
-  const currentInstruction = currentManeuver
-    ? translateManeuver(currentManeuver.instruction, currentManeuver.modifier)
-    : '';
+  const currentInstruction = currentManeuver ? translateManeuver(currentManeuver.instruction, currentManeuver.modifier) : '';
   const maneuverDistance = currentManeuver ? formatDistance(currentManeuver.distance) : '';
   const currentRoad = currentManeuver?.way_name || '';
-  const nextInstruction = nextManeuver
-    ? translateManeuver(nextManeuver.instruction, nextManeuver.modifier)
-    : 'Anda telah tiba di tujuan';
-
-  const maneuverIcon = currentManeuver
-    ? MANEUVER_ICONS[currentManeuver.type?.toLowerCase()] || '➡️'
-    : '🏁';
+  const maneuverIcon = currentManeuver ? (MANEUVER_ICONS[currentManeuver.type?.toLowerCase()] || '➡️') : '🏁';
 
   if (tokenError) {
     return (
-      <div className="h-full flex items-center justify-center bg-zinc-950 p-8 text-center">
-        <div className="max-w-sm space-y-4">
+      <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 z-[1]">
+        <div className="max-w-sm mx-4 space-y-4 text-center">
           <div className="w-16 h-16 bg-red-500/20 rounded-3xl flex items-center justify-center mx-auto border border-red-500/30">
             <MapPin className="w-8 h-8 text-red-500" />
           </div>
@@ -714,10 +376,7 @@ export default function NavigateView() {
             <h2 className="text-lg font-bold text-white mb-2">Mapbox Token Bermasalah</h2>
             <p className="text-sm text-white/50 leading-relaxed">{tokenError}</p>
           </div>
-          <button
-            onClick={() => window.open('https://account.mapbox.com/access-tokens/', '_blank')}
-            className="w-full bg-brand-orange text-white py-3 rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-brand-orange/90 transition-colors"
-          >
+          <button onClick={() => window.open('https://account.mapbox.com/access-tokens/', '_blank')} className="w-full bg-brand-orange text-white py-3 rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-brand-orange/90 transition-colors">
             Dapatkan Public Token
           </button>
         </div>
@@ -726,119 +385,117 @@ export default function NavigateView() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 relative">
-      {/* Background Camera (AI Scanning) */}
+    <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 1 }}>
+
+      {/* ─── FULL-SCREEN MAP (always behind) ─── */}
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0"
+        style={{ zIndex: 1 }}
+      />
+
+      {/* ─── CAMERA OVERLAY (AI scanning during navigation) ─── */}
       <div className={cn(
-        "absolute inset-0 z-0 transition-opacity duration-1000",
-        isCameraActive && routeState.isNavigating ? "opacity-100" : "opacity-0 pointer-events-none"
-      )}>
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover grayscale brightness-50 contrast-125"
-        />
+        "absolute inset-0 transition-opacity duration-1000",
+        routeState.isNavigating && isCameraActive ? "opacity-100" : "opacity-0 pointer-events-none"
+      )} style={{ zIndex: 2 }}>
+        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover grayscale brightness-50 contrast-125" />
       </div>
 
-      {/* Map (always visible when not in camera-only mode) */}
+      {/* ─── CAMERA PREVIEW (idle/search state) ─── */}
       <div className={cn(
-        "absolute inset-0 z-0 transition-opacity duration-700",
-        routeState.isNavigating && isCameraActive ? "opacity-20" : "opacity-100"
-      )}>
-        <div ref={mapContainerRef} className="w-full h-full" />
+        "absolute inset-0 transition-opacity duration-500 pointer-events-none",
+        activeTab === 'camera' && isCameraActive && !routeState.routeGeometry ? "opacity-100" : "opacity-0 pointer-events-none"
+      )} style={{ zIndex: 9 }}>
+        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+        {/* Camera scan frame */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-64 h-64 border-2 border-brand-orange/60 rounded-3xl" />
+        </div>
+        <div className="absolute bottom-20 left-4 right-4 text-center">
+          <p className="text-white text-xs font-bold uppercase tracking-widest">AI Road Scanner Active</p>
+          <p className="text-white/60 text-[10px] mt-1">Scanning every 5 seconds...</p>
+        </div>
       </div>
 
-      {/* Main UI Overlay */}
-      <div className="relative z-10 flex flex-col h-full">
-        {/* Search Bar — shown when no active route */}
-        {!routeState.isNavigating && (
-          <div className="p-4 pt-4">
-            <div className="bg-zinc-900/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
-              {/* Search Input */}
-              <div className="flex items-center gap-3 p-4">
-                <Search className="text-white/40 w-5 h-5 shrink-0" />
+      {/* Camera toggle button (top-right) when in preview/search state */}
+      {activeTab === 'camera' && !routeState.routeGeometry && (
+        <div className="absolute top-4 right-4 pointer-events-auto" style={{ zIndex: 11 }}>
+          <button
+            onClick={startCamera}
+            className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 flex items-center justify-center hover:bg-white transition-colors"
+          >
+            <Camera className="w-4 h-4 text-zinc-600" />
+          </button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          STATE 1: IDLE — no route, show compact search + tab bar
+      ══════════════════════════════════════════ */}
+      {!routeState.routeGeometry && (
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
+          {/* Compact search bar — top */}
+          <div className="pointer-events-auto absolute top-3 left-3 right-3">
+            <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <Search className="text-zinc-400 w-4 h-4 shrink-0" />
                 <input
-                  type="text"
-                  value={searchQuery}
+                  type="text" value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Cari lokasi tujuan..."
-                  className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-white placeholder-white/20"
-                  onKeyDown={e => {
-                    if (e.key === 'Escape') { setSearchQuery(''); setSuggestions([]); }
-                  }}
+                  className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-zinc-800 placeholder-zinc-400"
+                  onKeyDown={e => { if (e.key === 'Escape') { setSearchQuery(''); setSuggestions([]); } }}
                 />
-                {searchLoading && (
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-brand-orange rounded-full animate-spin shrink-0" />
-                )}
+                {searchLoading && <div className="w-3.5 h-3.5 border-2 border-zinc-300 border-t-brand-orange rounded-full animate-spin shrink-0" />}
                 {(searchQuery || suggestions.length > 0) && (
-                  <button
-                    onClick={() => { setSearchQuery(''); setSuggestions([]); }}
-                    className="text-white/40 hover:text-white/70 transition-colors"
-                  >
-                    <X className="w-4 h-4" />
+                  <button onClick={() => { setSearchQuery(''); setSuggestions([]); }} className="text-zinc-400 hover:text-zinc-600 transition-colors">
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
 
-              {/* Location Status Indicator */}
-              {locationStatus && locationStatus !== 'success' && (
-                <div className="px-4 pb-3 border-t border-white/5">
-                  <div className="flex items-center gap-2 mt-3">
-                    {locationStatus === 'loading' && (
-                      <>
-                        <div className="w-3 h-3 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin shrink-0" />
-                        <span className="text-xs text-white/50">Mencari lokasi Anda...</span>
-                      </>
-                    )}
-                    {locationStatus === 'error' && (
-                      <>
-                        <span className="text-xs text-red-400 flex-1">{locationErrorMsg}</span>
-                        <button
-                          onClick={fetchLocation}
-                          className="text-xs text-brand-orange hover:text-brand-orange/80 font-medium transition-colors shrink-0"
-                        >
-                          Coba Lagi
-                        </button>
-                      </>
-                    )}
-                  </div>
+              {/* Location status strip */}
+              {locationStatus === 'error' && (
+                <div className="px-3 pb-2 border-t border-zinc-100 flex items-center gap-2">
+                  <span className="text-[10px] text-red-500 flex-1">{locationErrorMsg}</span>
+                  <button onClick={fetchLocation} className="text-[10px] text-brand-orange font-medium hover:underline">Coba Lagi</button>
+                </div>
+              )}
+              {locationStatus === 'loading' && (
+                <div className="px-3 pb-2 border-t border-zinc-100 flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 border-2 border-zinc-200 border-t-blue-500 rounded-full animate-spin shrink-0" />
+                  <span className="text-[10px] text-zinc-400">Mencari lokasi...</span>
+                </div>
+              )}
+              {locationStatus === 'success' && (
+                <div className="px-3 pb-2 border-t border-zinc-100 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                  <span className="text-[10px] text-zinc-400">Lokasi terdeteksi</span>
                 </div>
               )}
 
-              {/* Suggestions Dropdown */}
+              {/* Suggestions */}
               <AnimatePresence>
-                {(suggestions.length > 0 || searchLoading || searchError) && (
+                {(suggestions.length > 0 || searchError) && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
+                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="border-t border-white/5 overflow-hidden"
+                    className="border-t border-zinc-100 overflow-hidden"
                   >
-                    {/* Loading state */}
-                    {searchLoading && (
-                      <div className="px-4 py-3 flex items-center gap-3 border-t border-white/5">
-                        <div className="w-4 h-4 border-2 border-white/10 border-t-brand-orange rounded-full animate-spin shrink-0" />
-                        <span className="text-xs text-white/40">Mencari lokasi...</span>
-                      </div>
-                    )}
-                    {/* Error state */}
                     {searchError && !searchLoading && (
-                      <div className="px-4 py-3 border-t border-white/5">
-                        <p className="text-xs text-red-400">{searchError}</p>
-                      </div>
+                      <div className="px-3 py-2"><p className="text-[10px] text-red-500">{searchError}</p></div>
                     )}
-                    {/* Results */}
-                    {!searchLoading && suggestions.map((s, i) => (
+                    {suggestions.map(s => (
                       <button
-                        key={s.id}
-                        onClick={() => calculateRoute(s)}
-                        className="w-full px-4 py-3 flex items-start gap-3 hover:bg-white/5 transition-colors text-left border-t border-white/5 first:border-t-0"
+                        key={s.id} onClick={() => calculateRoute(s)}
+                        className="w-full px-3 py-2 flex items-start gap-2 hover:bg-zinc-50 transition-colors text-left border-t border-zinc-100 first:border-t-0"
                       >
-                        <MapPin className="w-4 h-4 text-brand-orange mt-0.5 shrink-0" />
+                        <MapPin className="w-3.5 h-3.5 text-brand-orange mt-0.5 shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-white leading-tight">{s.text}</p>
-                          <p className="text-xs text-white/40 leading-tight mt-0.5 line-clamp-1">
+                          <p className="text-xs font-medium text-zinc-800 leading-tight">{s.text}</p>
+                          <p className="text-[10px] text-zinc-400 leading-tight mt-0.5 line-clamp-1">
                             {s.place_name.replace(s.text + ', ', '')}
                           </p>
                         </div>
@@ -847,235 +504,182 @@ export default function NavigateView() {
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              {/* Route Preview — shown when route is calculated */}
-              {routeState.routeGeometry && !routeState.isNavigating && (
-                <div className="border-t border-white/5">
-                  <div className="p-4 space-y-3">
-                    {/* Origin */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-white/30 uppercase font-black tracking-widest">Asal</p>
-                        <p className="text-xs text-white/70">Lokasi saya</p>
-                      </div>
-                    </div>
-
-                    {/* Route line */}
-                    <div className="flex items-center gap-2 pl-4">
-                      <div className="w-px h-4 border-l-2 border-dashed border-white/10 ml-[-1px]" />
-                      <ArrowRight className="w-3 h-3 text-brand-orange/60" />
-                    </div>
-
-                    {/* Destination */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-brand-orange/20 flex items-center justify-center shrink-0">
-                        <MapPin className="w-4 h-4 text-brand-orange" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-white/30 uppercase font-black tracking-widest">Tujuan</p>
-                        <p className="text-xs font-medium text-white leading-tight line-clamp-1">
-                          {routeState.destination?.text}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Route Stats */}
-                    <div className="grid grid-cols-4 gap-2 mt-2 pt-3 border-t border-white/5">
-                      <div className="text-center">
-                        <p className="text-lg font-black text-white">{formatDistance(routeState.distance)}</p>
-                        <p className="text-[9px] text-white/30 uppercase font-black tracking-widest">Jarak</p>
-                      </div>
-                      <div className="text-center border-x border-white/5">
-                        <p className="text-lg font-black text-white">{formatDuration(routeState.eta * 60)}</p>
-                        <p className="text-[9px] text-white/30 uppercase font-black tracking-widest">Waktu</p>
-                      </div>
-                      <div className="text-center border-x border-white/5">
-                        {/* Safety Score Badge */}
-                        <p className={routeState.safetyScore >= 80 ? "text-lg font-black text-green-400" : routeState.safetyScore >= 60 ? "text-lg font-black text-yellow-400" : "text-lg font-black text-red-400"}>
-                          {routeState.safetyScore}
-                        </p>
-                        <p className="text-[9px] text-white/30 uppercase font-black tracking-widest">Safety</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-lg font-black text-white">{routeState.steps}</p>
-                        <p className="text-[9px] text-white/30 uppercase font-black tracking-widest">Langkah</p>
-                      </div>
-                    </div>
-
-                    {/* Safety Badge */}
-                    <div className={routeState.safetyScore >= 80 ? "bg-green-500/15 border border-green-500/30 rounded-xl px-3 py-2 flex items-center gap-2" : routeState.safetyScore >= 60 ? "bg-yellow-500/15 border border-yellow-500/30 rounded-xl px-3 py-2 flex items-center gap-2" : "bg-red-500/15 border border-red-500/30 rounded-xl px-3 py-2 flex items-center gap-2"}>
-                      <span className="text-sm">{routeState.safetyScore >= 80 ? "🟢" : routeState.safetyScore >= 60 ? "🟡" : "🔴"}</span>
-                      <span className={routeState.safetyScore >= 80 ? "text-xs font-bold text-green-400" : routeState.safetyScore >= 60 ? "text-xs font-bold text-yellow-400" : "text-xs font-bold text-red-400"}>
-                        {routeState.safetyLabel}
-                      </span>
-                      {routeState.hazardWarnings.length > 0 && (
-                        <span className="text-xs text-white/50 ml-auto">
-                          {routeState.hazardWarnings.length} peringatan
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Hazard Warnings List */}
-                    {routeState.hazardWarnings.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-[9px] text-white/30 uppercase font-black tracking-widest">Peringatan di sepanjang rute:</p>
-                        {routeState.hazardWarnings.slice(0, 2).map((w, i) => (
-                          <div key={i} className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
-                            <span className="text-xs">⚠️</span>
-                            <span className="text-xs text-white/70 flex-1">{w.name}</span>
-                            <span className={w.severity === 'high' ? "text-xs font-bold text-red-400" : w.severity === 'medium' ? "text-xs font-bold text-yellow-400" : "text-xs font-bold text-orange-400"}>
-                              {w.severity === 'high' ? 'Tinggi' : w.severity === 'medium' ? 'Sedang' : 'Rendah'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3 mt-3">
-                      <button
-                        onClick={resetRoute}
-                        className="flex-1 py-3 rounded-2xl font-bold text-sm text-white/60 bg-white/5 border border-white/10 flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        Batal
-                      </button>
-                      <button
-                        onClick={startNavigation}
-                        className="flex-[2] py-3 rounded-2xl font-bold text-sm bg-brand-orange text-white shadow-lg shadow-brand-orange/30 flex items-center justify-center gap-2 hover:bg-brand-orange/90 transition-colors active:scale-95"
-                      >
-                        <Navigation className="w-4 h-4 rotate-45" />
-                        Mulai Navigasi
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
-        )}
 
-        {/* Active Navigation Mode */}
-        <AnimatePresence>
-          {routeState.isNavigating && routeState.routeGeometry && (
-            <motion.div
-              initial={{ y: 100 }}
-              animate={{ y: 0 }}
-              exit={{ y: 100 }}
-              className="flex flex-col h-full"
-            >
-              {/* Top Instruction Card */}
-              <div className="p-4">
-                <div className="bg-white/95 backdrop-blur-2xl rounded-3xl p-5 shadow-2xl flex items-center gap-4 border border-white/20">
-                  <div className="w-14 h-14 rounded-2xl bg-brand-orange flex items-center justify-center shadow-xl shadow-brand-orange/40 shrink-0 text-2xl">
-                    {maneuverIcon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black text-black/30 uppercase tracking-widest mb-0.5">
-                      {maneuverDistance} • {currentRoad || 'Jl. ...'}
-                    </p>
-                    <h2 className="text-xl font-bold font-display text-black leading-tight">
-                      {currentInstruction || 'Mulai perjalanan'}
-                    </h2>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="block text-brand-orange font-black text-2xl">{currentTime}</span>
-                    <span className="block text-black/30 text-[10px] font-bold uppercase">
-                      ETA {routeState.eta} menit
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress indicators */}
-              <div className="px-4 mb-2">
-                <div className="flex gap-1">
-                  {routeState.maneuvers.slice(0, 8).map((_, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        "h-1 flex-1 rounded-full transition-colors",
-                        i <= routeState.currentStepIndex ? "bg-brand-orange" : "bg-white/10"
-                      )}
-                    />
-                  ))}
-                  {routeState.maneuvers.length > 8 && (
-                    <span className="text-[10px] text-white/30 self-center ml-1">+{routeState.maneuvers.length - 8}</span>
+          {/* Bottom Tab Bar */}
+          <div className="absolute bottom-4 left-3 right-3 pointer-events-auto">
+            <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 px-1.5 py-1 flex items-center gap-0.5">
+              {[
+                { id: 'map' as const, icon: Navigation, label: 'Peta' },
+                { id: 'search' as const, icon: Search, label: 'Cari' },
+                { id: 'camera' as const, icon: Camera, label: 'Kamera' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    if (tab.id === 'camera') setIsCameraActive(prev => !prev);
+                  }}
+                  className={cn(
+                    "flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-xl transition-all text-[10px] font-bold",
+                    activeTab === tab.id
+                      ? "bg-brand-orange text-white shadow"
+                      : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
                   )}
+                >
+                  <tab.icon className={cn("w-4 h-4", activeTab === tab.id ? "rotate-45" : "")} />
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          STATE 2: ROUTE PREVIEW — ultra slim, map takes 80%+ space
+      ══════════════════════════════════════════ */}
+      {routeState.routeGeometry && !routeState.isNavigating && (
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
+          {/* Back button — top left corner, tiny circle */}
+          <div className="absolute top-3 left-3 pointer-events-auto">
+            <button
+              onClick={resetRoute}
+              className="w-7 h-7 bg-white/90 backdrop-blur rounded-full shadow flex items-center justify-center hover:bg-white transition-colors"
+            >
+              <RotateCcw className="w-3 h-3 text-zinc-600" />
+            </button>
+          </div>
+
+          {/* Destination pill — top right corner, tiny */}
+          <div className="absolute top-3 right-3 pointer-events-auto">
+            <div className="bg-white/90 backdrop-blur rounded-full px-2 py-1 shadow flex items-center gap-1">
+              <MapPin className="w-2.5 h-2.5 text-brand-orange shrink-0" />
+              <p className="text-[9px] font-semibold text-zinc-800 truncate max-w-[100px]">{routeState.destination?.text}</p>
+            </div>
+          </div>
+
+          {/* Bottom strip — ultra slim stats + action pills */}
+          <div className="absolute bottom-4 left-3 right-3 pointer-events-auto">
+            <div className="bg-white/90 backdrop-blur rounded-2xl shadow overflow-hidden flex items-center">
+              {/* Stats — 3 small cells */}
+              <div className="flex flex-1 divide-x divide-zinc-100">
+                <div className="flex-1 text-center py-1.5">
+                  <p className="text-[10px] font-black text-zinc-800 leading-tight">{formatDistance(routeState.distance)}</p>
+                  <p className="text-[7px] text-zinc-400 uppercase tracking-widest leading-tight">jarak</p>
+                </div>
+                <div className="flex-1 text-center py-1.5">
+                  <p className="text-[10px] font-black text-zinc-800 leading-tight">{formatDuration(routeState.eta * 60)}</p>
+                  <p className="text-[7px] text-zinc-400 uppercase tracking-widest leading-tight">waktu</p>
+                </div>
+                <div className="flex-1 text-center py-1.5">
+                  <p className={routeState.safetyScore >= 80 ? "text-[10px] font-black text-green-500" : routeState.safetyScore >= 60 ? "text-[10px] font-black text-yellow-500" : "text-[10px] font-black text-red-500"}>
+                    {routeState.safetyScore}
+                  </p>
+                  <p className="text-[7px] text-zinc-400 uppercase tracking-widest leading-tight">safety</p>
                 </div>
               </div>
 
-              {/* Hazard Alerts */}
-              <div className="flex-1 px-4 flex flex-col gap-2 overflow-hidden">
-                <AnimatePresence>
-                  {hazards.map(h => (
-                    <motion.div
-                      key={h.id}
-                      initial={{ x: 100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -100, opacity: 0 }}
-                      className="bg-red-500/90 backdrop-blur-sm rounded-2xl p-3 flex items-center gap-3 border-l-4 border-red-300"
-                    >
-                      <span className="text-lg">⚠️</span>
-                      <p className="text-sm font-bold text-white">{h.type}</p>
-                      <span className="text-xs text-white/70 ml-auto">{h.distance}</span>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+              {/* Action pills */}
+              <div className="flex items-center gap-1 px-1.5 py-1.5">
+                <button
+                  onClick={resetRoute}
+                  className="py-1 px-1.5 rounded-lg text-[8px] font-bold text-zinc-500 bg-zinc-100 hover:bg-zinc-200 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={startNavigation}
+                  className="py-1 px-2 rounded-lg text-[8px] font-bold bg-brand-orange text-white hover:bg-brand-orange/90 transition-colors"
+                >
+                  Navigasi
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Next Step Preview */}
-              <div className="px-4">
-                <div className="bg-zinc-900/80 backdrop-blur-xl rounded-2xl p-4 flex items-center gap-3 border border-white/10 mb-4">
-                  <ChevronRight className="w-4 h-4 text-white/20" />
-                  <p className="text-xs text-white/50">Selanjutnya: <span className="text-white/70 font-medium">{nextInstruction}</span></p>
-                </div>
+      {/* ══════════════════════════════════════════
+          STATE 3: ACTIVE NAVIGATION — single minimal bottom sheet
+      ══════════════════════════════════════════ */}
+      <AnimatePresence>
+        {routeState.isNavigating && routeState.routeGeometry && (
+          <>
+            {/* ── HAZARD ALERTS — top right, compact pills ── */}
+            {hazards.length > 0 && (
+              <div className="absolute top-3 right-3 pointer-events-auto" style={{ zIndex: 10 }}>
+                {hazards.map(h => (
+                  <motion.div
+                    key={h.id} initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -60, opacity: 0 }}
+                    className="bg-red-500/90 backdrop-blur rounded-full px-2.5 py-0.5 flex items-center gap-1 shadow mb-0.5"
+                  >
+                    <span className="text-[9px]">⚠️</span>
+                    <p className="text-[9px] font-bold text-white">{h.type}</p>
+                  </motion.div>
+                ))}
               </div>
+            )}
 
-              {/* Bottom Controls */}
-              <div className="p-4 bg-zinc-950/90 backdrop-blur-sm border-t border-white/5">
-                <div className="flex gap-3">
+            
+            {/* ── BOTTOM SHEET — single compact bar ── */}
+            <div className="absolute bottom-3 left-3 right-3 pointer-events-auto" style={{ zIndex: 10 }}>
+              <div className="bg-black/70 backdrop-blur rounded-2xl px-3 py-2 shadow border border-white/10">
+                <div className="flex items-center gap-2">
+                  {/* ETA + distance */}
+                  <div className="flex flex-col items-center shrink-0">
+                    <span className="text-[10px] font-black text-orange-400">{routeState.eta}m</span>
+                    <span className="text-[7px] text-white/40">sisa</span>
+                  </div>
+                  <div className="w-px h-6 bg-white/10 shrink-0" />
+                  {/* Next step */}
+                  <div className="flex-1 min-w-0">
+                    {(() => {
+                      const nextManeuver = routeState.maneuvers[routeState.currentStepIndex + 1];
+                      const next = nextManeuver ? translateManeuver(nextManeuver.instruction, nextManeuver.modifier) : 'Tiba di tujuan';
+                      return <p className="text-[9px] text-white/60 leading-tight truncate">↑ {next}</p>;
+                    })()}
+                  </div>
+                  {/* Progress dots */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {routeState.maneuvers.slice(0, 8).map((_, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "h-1 rounded-full transition-all",
+                          i < routeState.currentStepIndex ? "w-2 bg-brand-orange" :
+                          i === routeState.currentStepIndex ? "w-3 bg-white" : "w-1 bg-white/20"
+                        )}
+                      />
+                    ))}
+                    {routeState.maneuvers.length > 8 && <span className="text-[7px] text-white/30">+{routeState.maneuvers.length - 8}</span>}
+                  </div>
+                  <div className="w-px h-6 bg-white/10 shrink-0" />
+                  {/* Camera toggle */}
                   <button
                     onClick={() => setIsCameraActive(!isCameraActive)}
                     className={cn(
-                      "flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all border",
-                      isCameraActive
-                        ? "bg-red-500 text-white border-red-400 shadow-lg shadow-red-500/20"
-                        : "bg-white/5 text-white/60 border-white/10"
+                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all",
+                      isCameraActive ? "bg-red-500 text-white" : "bg-white/20 text-white/60"
                     )}
                   >
-                    <Camera className="w-4 h-4" />
-                    {isCameraActive ? "Stop AI Scan" : "Aktifkan AI Scan"}
+                    <Camera className="w-3 h-3" />
                   </button>
+                  {/* End */}
                   <button
                     onClick={cancelNavigation}
-                    className="bg-red-500/20 text-red-400 border border-red-500/30 py-4 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-500/30 transition-colors"
+                    className="w-7 h-7 rounded-full bg-white/20 text-white/60 flex items-center justify-center shrink-0 hover:bg-white/30 transition-colors"
                   >
-                    <X className="w-4 h-4" />
-                    Batal
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Idle State — no route calculated */}
-        {!routeState.routeGeometry && (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <div className="w-20 h-20 rounded-3xl bg-zinc-800/50 flex items-center justify-center mb-4 border border-white/10">
-              <Navigation className="w-10 h-10 text-white/20 rotate-45" />
             </div>
-            <h3 className="text-lg font-bold text-white/60 mb-1">Rute Belum Ditentukan</h3>
-            <p className="text-sm text-white/30 max-w-xs">
-              Cari lokasi tujuan di atas untuk menghitung rute dan memulai navigasi turn-by-turn.
-            </p>
-          </div>
+          </>
         )}
-      </div>
+      </AnimatePresence>
     </div>
   );
 }
