@@ -109,6 +109,117 @@ function isRateLimited(key: string, windowMs = 15000): boolean {
   return false;
 }
 
+// Popular Karawang preset locations (always available regardless of geolocation)
+const KARAWANG_PRESETS: GeocodingFeature[] = [
+  {
+    id: 'horizon-university',
+    place_name: 'Horizon University Indonesia, Jl. Pangkal Perjuangan By Pass No.KM.1, Tanjungpura, Karawang Bar., Karawang, Jawa Barat 41316',
+    center: [107.29258097454206, -6.289202887118927],
+    text: 'Horizon University Indonesia',
+    full_address: 'Horizon University Indonesia, Jl. Pangkal Perjuangan By Pass KM.1, Tanjungpura, Karawang Barat, Jawa Barat 41316',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41316',
+  },
+  {
+    id: 'rs-karawang',
+    place_name: 'RSUP Karawang, Jl. Galuh No.1, Nagasari, Karawang Bar., Karawang, Jawa Barat 41312',
+    center: [107.3170, -6.3060],
+    text: 'RSUP Karawang',
+    full_address: 'RSUP Karawang, Jl. Galuh No.1, Nagasari, Karawang Barat, Jawa Barat 41312',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41312',
+  },
+  {
+    id: 'tol-karawang-barat',
+    place_name: 'Gerbang Tol Karawang Barat, Trans Jawa Highway, Karawang, Jawa Barat',
+    center: [107.3450, -6.2930],
+    text: 'Gerbang Tol Karawang Barat',
+    full_address: 'Gerbang Tol Karawang Barat, Jalan Tol Trans Jawa, Karawang, Jawa Barat',
+    district: 'Karawang Timur',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+  },
+  {
+    id: 'mall-karawang',
+    place_name: 'Resvi City Mall Karawang, Jl. Tuparev, Nagarasari, Karawang Bar., Karawang, Jawa Barat 41312',
+    center: [107.3110, -6.3150],
+    text: 'Resvi City Mall Karawang',
+    full_address: 'Resvi City Mall Karawang, Jl. Tuparev No.88, Nagarasari, Karawang Barat, Jawa Barat 41312',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41312',
+  },
+  {
+    id: 'alun-alun-karawang',
+    place_name: 'Alun-Alun Karawang, Jl. Jend. A.Yani, Nagasari, Karawang Bar., Karawang, Jawa Barat 41311',
+    center: [107.3070, -6.3090],
+    text: 'Alun-Alun Karawang',
+    full_address: 'Alun-Alun Karawang, Jl. Jend. Ahmad Yani, Nagasari, Karawang Barat, Jawa Barat 41311',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41311',
+  },
+  {
+    id: 'stadt-celebes-karawang',
+    place_name: 'Stadt Celebes Hotel Karawang, Jl. Pangkal Perjuangan, Tanjungpura, Karawang Bar., Karawang, Jawa Barat 41316',
+    center: [107.2870, -6.2860],
+    text: 'Stadt Celebes Hotel',
+    full_address: 'Stadt Celebes Hotel Karawang, Jl. Pangkal Perjuangan By Pass, Tanjungpura, Karawang Barat, Jawa Barat 41316',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41316',
+  },
+  {
+    id: 'citra-insight-karawang',
+    place_name: 'Citra Insight Technology, Jl. Pangkal Perjuangan By Pass KM.1,8, Tanjungpura, Karawang Bar., Karawang, Jawa Barat 41316',
+    center: [107.2960, -6.2915],
+    text: 'Citra Insight Technology',
+    full_address: 'Citra Insight Technology, Jl. Pangkal Perjuangan By Pass KM.1,8, Tanjungpura, Karawang Barat, Jawa Barat 41316',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41316',
+  },
+  {
+    id: 'tol-karawang-timur',
+    place_name: 'Gerbang Tol Karawang Timur, Trans Jawa Highway, Karawang, Jawa Barat',
+    center: [107.2650, -6.3250],
+    text: 'Gerbang Tol Karawang Timur',
+    full_address: 'Gerbang Tol Karawang Timur, Jalan Tol Trans Jawa, Karawang, Jawa Barat',
+    district: 'Karawang Timur',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+  },
+  {
+    id: 'kln-karawang',
+    place_name: 'KLN Karawang - Kawasan industri Ngury, Telagasari, Karawang, Jawa Barat',
+    center: [107.3500, -6.3500],
+    text: 'Kawasan Industri Karawang',
+    full_address: 'Kawasan Industri Ngury, Telagasari, Karawang, Jawa Barat 41381',
+    district: 'Telagasari',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+    postcode: '41381',
+  },
+  {
+    id: 'stt-karawang',
+    place_name: 'STT Bandung - kampus II Karawang, Jl. Pangkal Perjuangan By Pass KM.2, Tanjungpura, Karawang Bar., Karawang, Jawa Barat',
+    center: [107.2850, -6.2855],
+    text: 'STT Bandung - Kampus II Karawang',
+    full_address: 'STT Bandung (Kampus II Karawang), Jl. Pangkal Perjuangan By Pass KM.2, Tanjungpura, Karawang Barat, Jawa Barat',
+    district: 'Karawang Barat',
+    city: 'Karawang',
+    region: 'Jawa Barat',
+  },
+];
+
 function translateManeuver(instruction?: string, modifier?: string, wayName?: string, distance?: number): string {
   if (!instruction) return 'Lanjutkan perjalanan';
   const lower = instruction.toLowerCase();
@@ -260,16 +371,26 @@ export default function MapboxView() {
         const lng = pos.coords.longitude;
         const lat = pos.coords.latitude;
         console.log('📍 User location detected:', { lat, lng });
+
+        // Validate bounds: Indonesia
+        const isInIndonesia = lng >= 95 && lng <= 141 && lat >= -11 && lat <= 6;
+        if (!isInIndonesia) {
+          console.warn('⚠️ Initial location outside Indonesia, staying at Karawang default');
+          // Don't update — keep default Karawang center
+          return;
+        }
+
         setCurrentLocation([lng, lat]);
         setLng(lng);
         setLat(lat);
         setLocationPermission('granted');
       },
       (error) => {
-        console.error('Geolocation error:', error);
+        console.warn('Initial geolocation failed, using Karawang default:', error.message);
         setLocationPermission('denied');
-        // Keep default location (Karawang)
-      }
+        // Keep default Karawang — no update needed
+      },
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: 60000 }
     );
 
     // Watch for position updates
@@ -277,13 +398,20 @@ export default function MapboxView() {
       (pos) => {
         const lng = pos.coords.longitude;
         const lat = pos.coords.latitude;
+
+        // Only update if within Indonesia
+        const isInIndonesia = lng >= 95 && lng <= 141 && lat >= -11 && lat <= 6;
+        if (!isInIndonesia) {
+          return; // Ignore locations outside Indonesia
+        }
+
         setCurrentLocation([lng, lat]);
         setLng(lng);
         setLat(lat);
         setLocationPermission('granted');
       },
       (error) => {
-        console.error('Watch position error:', error);
+        console.warn('Watch position error:', error);
       },
       { enableHighAccuracy: true }
     );
@@ -566,7 +694,15 @@ export default function MapboxView() {
   // NOTE: we use currentLocationRef (not currentLocation) to avoid rebuilding the function
   // on every GPS update — which would reset the debounce timer and prevent searches from completing
   const searchPlaces = useCallback(async (query: string) => {
-    if (!query.trim()) { setSuggestions([]); return; }
+    if (!query.trim()) {
+      // Show popular Karawang locations when search is empty
+      if (locationPermission !== 'granted') {
+        setSuggestions(KARAWANG_PRESETS.slice(0, 5));
+      } else {
+        setSuggestions([]);
+      }
+      return;
+    }
     setSearchLoading(true);
     setSearchError('');
 
@@ -576,15 +712,15 @@ export default function MapboxView() {
     try {
       const locationAtCall = currentLocationRef.current;
       const proximity = `${locationAtCall[0]},${locationAtCall[1]}`;
-      const url = `/api/geocode?query=${encodeURIComponent(query)}&proximity=${proximity}`;
-      console.log('🔍 Searching:', url);
-      const res = await fetch(url);
+      const mapboxUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&country=id&language=id&types=poi,address,place,locality,neighborhood&proximity=${proximity}&limit=10`;
+      console.log('🔍 Searching:', mapboxUrl);
+      const res = await fetch(mapboxUrl);
       const data = await res.json();
 
       console.log('📦 Geocode response:', data);
 
-      if (data.error && !data.features) {
-        setSearchError(data.error);
+      if (data.message) {
+        setSearchError(data.message);
         setSuggestions([]);
         return;
       }
@@ -598,15 +734,30 @@ export default function MapboxView() {
           place_name: 'Horizon University Indonesia, Jl. Pangkal Perjuangan By Pass No.KM.1, Tanjungpura, Karawang Bar., Karawang, Jawa Barat 41316',
           center: [107.29258097454206, -6.289202887118927],
           text: 'Horizon University Indonesia',
-          context: []
+          context: [],
+          full_address: 'Horizon University Indonesia, Jl. Pangkal Perjuangan By Pass KM.1, Tanjungpura, Karawang Barat, Jawa Barat 41316',
+          city: 'Karawang',
+          region: 'Jawa Barat',
         };
         results.push(horizonUniversity);
       }
 
+      // FILTER KARAWANG PRESETS by query (always available)
+      const q = query.toLowerCase();
+      const filteredPresets = KARAWANG_PRESETS.filter(p =>
+        p.text.toLowerCase().includes(q) ||
+        (p.full_address || '').toLowerCase().includes(q) ||
+        p.city?.toLowerCase().includes(q)
+      );
+      results = [...results, ...filteredPresets];
+
       // Add Mapbox results
       if (data.features && data.features.length > 0) {
         console.log(`✅ Found ${data.features.length} results`);
-        results = [...results, ...(data.features as GeocodingFeature[])];
+        // Deduplicate against presets
+        const presetIds = new Set(results.map(r => r.id));
+        const newMapboxResults = (data.features as GeocodingFeature[]).filter(f => !presetIds.has(f.id));
+        results = [...results, ...newMapboxResults];
       }
 
       if (results.length > 0) {
@@ -617,8 +768,18 @@ export default function MapboxView() {
       }
     } catch (err) {
       console.error('❌ Search error:', err);
-      setSearchError('Gagal mencari lokasi. Cek koneksi internet.');
-      setSuggestions([]);
+      // Fallback: still allow preset search when offline
+      const q = query.toLowerCase();
+      const filteredPresets = KARAWANG_PRESETS.filter(p =>
+        p.text.toLowerCase().includes(q) ||
+        (p.full_address || '').toLowerCase().includes(q)
+      );
+      if (filteredPresets.length > 0) {
+        setSuggestions(filteredPresets);
+      } else {
+        setSearchError('Gagal mencari lokasi. Cek koneksi internet.');
+        setSuggestions([]);
+      }
     } finally {
       setSearchLoading(false);
     }
@@ -816,7 +977,7 @@ export default function MapboxView() {
 
     console.log('🔍 Requesting location...');
     setIsLocating(true);
-    setSearchError(''); // Clear previous errors
+    setSearchError('');
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -824,12 +985,12 @@ export default function MapboxView() {
         const lng = pos.coords.longitude;
         const lat = pos.coords.latitude;
 
-        // Check if location is reasonable (within Indonesia bounds)
+        // Stricter Indonesia bounds + margin
         const isInIndonesia = lng >= 95 && lng <= 141 && lat >= -11 && lat <= 6;
 
         if (!isInIndonesia) {
-          console.warn('⚠️ Location outside Indonesia, using Karawang fallback');
-          setCurrentLocation([107.3371, -6.3065]); // Karawang
+          console.warn('⚠️ Location outside Indonesia bounds, using Karawang fallback');
+          setCurrentLocation([107.3371, -6.3065]);
           setLng(107.3371);
           setLat(-6.3065);
           setSearchError('Lokasi terdeteksi di luar Indonesia. Menggunakan Karawang sebagai default.');
@@ -847,8 +1008,7 @@ export default function MapboxView() {
           mapInstance.current.flyTo({ center: finalLocation as [number, number], zoom: 15, duration: 1200 });
         }
 
-        const markerLocation = isInIndonesia ? [lng, lat] : [107.3371, -6.3065];
-        userLocationMarker.current?.setLngLat(markerLocation as [number, number]);
+        userLocationMarker.current?.setLngLat(isInIndonesia ? [lng, lat] : [107.3371, -6.3065]);
         setIsLocating(false);
       },
       (err) => {
@@ -861,20 +1021,21 @@ export default function MapboxView() {
         });
         setIsLocating(false);
 
-        if (err.code === 1) {
-          setSearchError('Izin lokasi ditolak. Klik ikon 🔒 di address bar → Site settings → Location → Allow');
-        } else if (err.code === 2) {
-          setSearchError('Lokasi tidak tersedia. Pastikan GPS/WiFi aktif dan coba lagi.');
-        } else if (err.code === 3) {
-          setSearchError('Timeout mencari lokasi. Coba lagi atau periksa koneksi internet.');
-        } else {
-          setSearchError(`Gagal mendapatkan lokasi (error ${err.code}). Coba lagi.`);
+        // On any error (denied/unavailable/timeout), use Karawang as default — no error message needed
+        setCurrentLocation([107.3371, -6.3065]);
+        setLng(107.3371);
+        setLat(-6.3065);
+        setLocationPermission('denied');
+
+        if (mapInstance.current) {
+          mapInstance.current.flyTo({ center: [107.3371, -6.3065], zoom: 14, duration: 1000 });
         }
+        userLocationMarker.current?.setLngLat([107.3371, -6.3065]);
       },
       {
-        timeout: 15000,
-        enableHighAccuracy: false, // Use IP-based location for faster response on desktop
-        maximumAge: 300000 // Cache location for 5 minutes
+        timeout: 20000,
+        enableHighAccuracy: true,
+        maximumAge: 60000
       }
     );
   }
