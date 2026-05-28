@@ -51,11 +51,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const { origin, destination } = req.body;
+  const { origin, destination, profile = 'driving-traffic' } = req.body;
 
   if (!origin || !destination) {
     return res.status(400).json({ error: 'Origin and destination required' });
   }
+
+  // Validate profile
+  const validProfiles = ['driving', 'driving-traffic', 'cycling', 'walking'];
+  const mapboxProfile = validProfiles.includes(profile) ? profile : 'driving-traffic';
 
   // Server-side: use MAPBOX_ACCESS_TOKEN (VITE_ prefix is for client-side only)
   const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN || process.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -65,7 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const originStr = `${origin[0]},${origin[1]}`;
   const destStr = `${destination[0]},${destination[1]}`;
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${originStr};${destStr}?geometries=geojson&overview=full&steps=true&language=id&alternatives=true&access_token=${mapboxToken}`;
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${mapboxProfile}/${originStr};${destStr}?geometries=geojson&overview=full&steps=true&language=id&alternatives=true&access_token=${mapboxToken}`;
 
   console.log(`🚗 Directions: ${originStr} → ${destStr}`);
 

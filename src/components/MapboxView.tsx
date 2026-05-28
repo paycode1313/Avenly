@@ -1227,163 +1227,20 @@ export default function MapboxView() {
         </div>
       )}
 
-      {/* ─── ACTIVE NAVIGATION OVERLAY ─── */}
+      {/* ─── ACTIVE NAVIGATION OVERLAY — clean dot pill, bottom right ─── */}
       <AnimatePresence>
         {routeState.isNavigating && routeState.routeGeometry && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 z-20 flex flex-col pointer-events-none">
-
-            {/* Off-route banner */}
-            <AnimatePresence>
-              {isOffRoute && (
-                <motion.div ref={offRouteBannerRef} initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
-                  className="bg-amber-500/95 backdrop-blur border-b border-amber-400 px-4 py-3 flex items-center gap-3 pointer-events-auto">
-                  <span className="text-xl">⚠️</span>
-                  <p className="text-sm font-black text-amber-950 flex-1">
-                    {isReRouting ? '⏳ Mencari rute ulang...' : '🚗 Anda keluar dari rute! Rute ulang...'}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Compact top info bar */}
-            <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2, type: "spring" }}
-              className="px-4 pt-6 pb-2 pointer-events-auto">
-              <div className="flex items-center justify-between gap-3">
-                {/* Direction compass */}
-                <div className="flex items-center gap-2 bg-white/90 backdrop-blur rounded-2xl px-3 py-2 shadow-lg border border-white/50">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-orange/20 to-red-500/20 flex items-center justify-center">
-                    <div className="transition-transform duration-300 ease-out" style={{ transform: `rotate(${-userHeading}deg)` }}>
-                      <svg viewBox="0 0 40 40" className="w-6 h-6">
-                        <polygon points="20,4 17,16 20,13 23,16" className="fill-red-500" />
-                        <polygon points="20,36 17,24 20,27 23,24" className="fill-zinc-300" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Arah</p>
-                    <p className="text-sm font-black text-black leading-tight">{getDirectionName(userHeading)}</p>
-                  </div>
-                </div>
-
-                {/* ETA */}
-                <div className="flex items-center gap-2 bg-white/90 backdrop-blur rounded-2xl px-3 py-2 shadow-lg border border-white/50">
-                  <div className="w-9 h-9 rounded-xl bg-brand-orange/20 flex items-center justify-center">
-                    <Clock className="w-4 h-4 text-brand-orange" />
-                  </div>
-                  <div>
-                    <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Sisa</p>
-                    <p className="text-sm font-black text-brand-orange leading-tight">{routeState.eta} <span className="text-[10px] text-zinc-500 font-bold">mnt</span></p>
-                  </div>
-                </div>
-
-                {/* Distance */}
-                <div className="flex items-center gap-2 bg-white/90 backdrop-blur rounded-2xl px-3 py-2 shadow-lg border border-white/50">
-                  <div className="w-9 h-9 rounded-xl bg-brand-orange/20 flex items-center justify-center">
-                    <Navigation2 className="w-4 h-4 text-brand-orange" />
-                  </div>
-                  <div>
-                    <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Jarak</p>
-                    <p className="text-sm font-black text-black leading-tight">{routeState.distance >= 1000 ? `${(routeState.distance/1000).toFixed(1)} km` : `${routeState.distance} m`}</p>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Main instruction strip */}
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}
-              className="px-4 mb-1 pointer-events-auto">
-              <div className="bg-white/90 backdrop-blur rounded-2xl p-3 shadow-lg border border-white/50 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-orange to-red-500 flex items-center justify-center shadow-md shrink-0">
-                  <span className="text-lg">{maneuverIcon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black text-brand-orange uppercase tracking-widest mb-0.5">{maneuverDistance} • {currentRoad || 'Jl. ...'}</p>
-                  <p className="text-base font-black text-black leading-tight truncate">{currentInstruction || 'Mulai perjalanan'}</p>
-                </div>
-                <div className="shrink-0">
-                  <div className="w-10 h-10 rounded-full border-2 border-zinc-100 flex items-center justify-center relative">
-                    <svg className="w-full h-full -rotate-90">
-                      <circle cx="20" cy="20" r="17" fill="none" stroke="#f5f5f5" strokeWidth="3" />
-                      <circle cx="20" cy="20" r="17" fill="none" stroke="#f97316" strokeWidth="3"
-                        strokeDasharray={`${(routeProgress * 106.8)} 106.8`} strokeLinecap="round" />
-                    </svg>
-                    <span className="absolute text-[9px] font-black text-zinc-600">{Math.round(routeProgress * 100)}%</span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Floating Recenter Button */}
-            <button onClick={() => setIsRecenterNeeded(true)}
-              className="absolute top-24 right-4 bg-brand-orange text-white w-14 h-14 rounded-2xl shadow-xl flex items-center justify-center pointer-events-auto active:scale-95 transition-all z-30"
-              title="Pusatkan ke lokasi saya">
-              <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" fill="white" stroke="none"/>
-                <circle cx="12" cy="12" r="8"/>
-                <line x1="12" y1="2" x2="12" y2="6"/>
-                <line x1="12" y1="18" x2="12" y2="22"/>
-                <line x1="2" y1="12" x2="6" y2="12"/>
-                <line x1="18" y1="12" x2="22" y2="12"/>
-              </svg>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute bottom-3 right-3 pointer-events-auto z-20"
+          >
+            <button
+              onClick={cancelNavigation}
+              className="bg-black/50 rounded-full px-2 py-1 flex items-center gap-1.5"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-orange shrink-0" />
+              <span className="text-[9px] font-medium text-white leading-none">{routeState.eta}m</span>
             </button>
-
-            {/* Route progress dots */}
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.4 }}
-              className="px-4 mb-1 pointer-events-auto">
-              <div className="flex gap-1">
-                {routeState.maneuvers.slice(0, 10).map((_, i) => (
-                  <motion.div key={i} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: i * 0.05 }}
-                    className={cn("h-1 flex-1 rounded-full transition-all origin-left",
-                      i <= routeState.currentStepIndex ? "bg-gradient-to-r from-brand-orange to-red-500" : "bg-white/20")} />
-                ))}
-                {routeState.maneuvers.length > 10 && (
-                  <span className="text-[10px] text-white/60 self-center ml-2 font-bold">+{routeState.maneuvers.length - 10}</span>
-                )}
-              </div>
-            </motion.div>
-
-            <div className="flex-1 pointer-events-none" />
-
-            {/* Next step */}
-            <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.5, type: "spring" }}
-              className="px-4 mb-2 pointer-events-auto">
-              <div className="bg-white/95 backdrop-blur border border-zinc-100 rounded-2xl p-3 shadow-lg flex items-center gap-3">
-                <div className="w-6 h-6 rounded-lg bg-brand-orange/10 flex items-center justify-center">
-                  <ChevronRight className="w-3 h-3 text-brand-orange" />
-                </div>
-                <p className="text-xs text-zinc-500">Next: <span className="text-zinc-900 font-bold">{nextInstruction}</span></p>
-              </div>
-            </motion.div>
-
-            {/* Bottom controls — compact */}
-            <motion.div initial={{ y: 80 }} animate={{ y: 0 }} transition={{ delay: 0.6, type: "spring" }}
-              className="px-4 pb-4 pointer-events-auto space-y-2">
-
-              {/* Traffic + North lock row */}
-              <div className="flex gap-2">
-                <button onClick={toggleTraffic}
-                  className={cn("w-10 h-10 rounded-xl flex items-center justify-center border transition-all shrink-0",
-                    showTraffic ? "bg-brand-orange border-brand-orange text-white shadow-lg" : "bg-white/90 border-zinc-200 text-zinc-600 hover:bg-white")}>
-                  <Layers className="w-4 h-4" />
-                </button>
-                <button onClick={() => setIsNorthLocked(v => !v)}
-                  className={cn("w-10 h-10 rounded-xl flex items-center justify-center border transition-all shrink-0",
-                    isNorthLocked ? "bg-brand-orange border-brand-orange text-white shadow-lg" : "bg-white/90 border-zinc-200 text-zinc-600 hover:bg-white")}>
-                  <Navigation2 className="w-4 h-4" />
-                </button>
-                {/* Arrive demo */}
-                <button onClick={() => { setShowArrival(true); setArrivalDestination(routeState.destination?.full_address || routeState.destination?.place_name || 'Tujuan'); }}
-                  className="flex-1 bg-green-500/90 hover:bg-green-500 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md">
-                  🎯 Tiba di Tujuan
-                </button>
-                {/* End navigation */}
-                <button onClick={cancelNavigation}
-                  className="bg-red-500/90 hover:bg-red-500 text-white py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-1 transition-all shadow-md active:scale-95">
-                  <X className="w-4 h-4" />Stop
-                </button>
-              </div>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

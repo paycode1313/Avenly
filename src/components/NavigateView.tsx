@@ -102,6 +102,8 @@ export default function NavigateView() {
   const [searchError, setSearchError] = useState('');
   const isCalculatingRouteRef = useRef(false);
 
+  const [routeProfile, setRouteProfile] = useState<'driving' | 'driving-traffic' | 'cycling' | 'walking'>('driving-traffic');
+
   const [routeState, setRouteState] = useState<RouteState>({
     isNavigating: false, origin: null, destination: null, routeGeometry: null,
     maneuvers: [], currentStepIndex: 0, eta: 0, distance: 0, steps: 0,
@@ -315,7 +317,7 @@ export default function NavigateView() {
     try {
       const res = await fetch('/api/directions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin, destination }),
+        body: JSON.stringify({ origin, destination, profile: routeProfile }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -456,6 +458,29 @@ export default function NavigateView() {
                 )}
               </div>
 
+              {/* Profile selector */}
+              <div className="px-3 pt-1.5 flex items-center gap-1">
+                {([
+                  { id: 'driving-traffic', label: 'Motor', icon: '🏍️' },
+                  { id: 'cycling', label: 'Sepeda', icon: '🚲' },
+                  { id: 'walking', label: 'Jalan', icon: '🚶' },
+                ] as const).map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setRouteProfile(p.id)}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold transition-all border",
+                      routeProfile === p.id
+                        ? "bg-brand-orange text-white border-brand-orange"
+                        : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:border-brand-orange/40"
+                    )}
+                  >
+                    <span>{p.icon}</span>
+                    <span>{p.label}</span>
+                  </button>
+                ))}
+              </div>
+
               {/* Location status strip */}
               {locationStatus === 'error' && (
                 <div className="px-3 pb-2 border-t border-zinc-100 flex items-center gap-2">
@@ -583,6 +608,23 @@ export default function NavigateView() {
 
               {/* Action pills */}
               <div className="flex items-center gap-1 px-1.5 py-1.5">
+                {/* Profile selector */}
+                <div className="flex items-center bg-zinc-100 rounded-lg p-0.5 gap-0.5">
+                  {(['driving-traffic', 'cycling', 'walking'] as const).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => { setRouteProfile(p); if (routeState.destination) calculateRoute(routeState.destination); }}
+                      className={cn(
+                        "px-1.5 py-0.5 rounded-md text-[7px] font-bold transition-all",
+                        routeProfile === p
+                          ? "bg-brand-orange text-white"
+                          : "text-zinc-400 hover:text-zinc-600"
+                      )}
+                    >
+                      {p === 'driving-traffic' ? '🚗' : p === 'cycling' ? '🚲' : '🚶'}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={resetRoute}
                   className="py-1 px-1.5 rounded-lg text-[8px] font-bold text-zinc-500 bg-zinc-100 hover:bg-zinc-200 transition-colors"
