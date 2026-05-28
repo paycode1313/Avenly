@@ -11,11 +11,14 @@
     ],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
     "types": ["vite/client"],
+    "typeRoots": ["./node_modules/@types", "./node_modules"],
     "paths": {
       "@/*": [
         "./*"
