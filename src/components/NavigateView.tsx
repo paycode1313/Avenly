@@ -609,19 +609,24 @@ export default function NavigateView() {
               {/* Action pills */}
               <div className="flex items-center gap-1 px-1.5 py-1.5">
                 {/* Profile selector */}
-                <div className="flex items-center bg-zinc-100 rounded-lg p-0.5 gap-0.5">
-                  {(['driving-traffic', 'cycling', 'walking'] as const).map(p => (
+                <div className="flex items-center gap-0.5">
+                  {([
+                    { id: 'driving-traffic', label: 'Motor', icon: '🏍️' },
+                    { id: 'cycling', label: 'Sepeda', icon: '🚲' },
+                    { id: 'walking', label: 'Jalan', icon: '🚶' },
+                  ] as const).map(p => (
                     <button
-                      key={p}
-                      onClick={() => { setRouteProfile(p); if (routeState.destination) calculateRoute(routeState.destination); }}
+                      key={p.id}
+                      onClick={() => { setRouteProfile(p.id); if (routeState.destination) calculateRoute(routeState.destination); }}
                       className={cn(
-                        "px-1.5 py-0.5 rounded-md text-[7px] font-bold transition-all",
-                        routeProfile === p
-                          ? "bg-brand-orange text-white"
-                          : "text-zinc-400 hover:text-zinc-600"
+                        "flex items-center gap-0.5 px-1 py-0.5 rounded-md text-[7px] font-bold transition-all border",
+                        routeProfile === p.id
+                          ? "bg-brand-orange text-white border-brand-orange"
+                          : "text-zinc-400 border-zinc-200 hover:border-brand-orange/40"
                       )}
                     >
-                      {p === 'driving-traffic' ? '🚗' : p === 'cycling' ? '🚲' : '🚶'}
+                      <span>{p.icon}</span>
+                      <span>{p.label}</span>
                     </button>
                   ))}
                 </div>
